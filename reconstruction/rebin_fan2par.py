@@ -113,7 +113,7 @@ class RebinFan2Par(XrayOperator):
         dr = dr * np.max(np.abs([np.cos(phi), np.sin(phi)]), axis=0)
 
         r = (np.arange(nr) - wr) * dr
-        s = dsd * np.arcsin(r / dso) # if not np.isinf(dsd) else r
+        s = dsd * np.arcsin(r / dso)  # radial interpolation
 
         if flag180:
             if offset_s != 0.25 and offset_s != 1.25:
@@ -177,52 +177,4 @@ class RebinFan2Par(XrayOperator):
         sino = np.vstack([t1.flatten(), t2.flatten()]).T.reshape(2*ns, nphi)
         return sino
     
-    """
-    def rebin_fan2par_arg_many(self, r_ob, phi_ob, flag180, fsino):
-        ns, nbeta = fsino.shape  # Assuming 2D sinogram
-        psino = np.zeros((nbeta, ns), dtype=fsino.dtype)
-
-        # for it in range(nbeta):
-        psino = self.rebin_fan2par_arg(r_ob, phi_ob, flag180, fsino)
-
-        return psino
-
-    def rebin_fan2par_arg(self, r_ob, phi_ob, flag180, fsino):
-        nb, na = fsino.shape
-    
-        # Evaluate phi_ob at nsamples points
-        phi_values = phi_ob(np.arange(nb))
-        # print("phi_values: ",phi_values.shape)
-
-        # Evaluate r_ob at nsamples points
-        r_values = r_ob(np.arange(nb, na))
-        r_values = r_ob(np.tile(np.arange(na), (na,1)))
-        
-        # print("r_values: ",r_values.shape)
-        
-        psino = np.dot(phi_values, fsino).T
-        
-        if flag180:
-            psino = rebin_fan2par_inlace(parameters, psino)
-        
-        psino = np.dot(r_values, psino)
-
-        return psino
-    
-    def rebin_fan2par_inlace(self, arg, sino):
-        ns, nphi = sino.shape
-        t1 = sino[:, :nphi]  
-        t2 = np.flip(sino[:, nphi:], axis=0)  
-
-        if self.pp_offset == 1.25:  # trick
-            t1 = np.vstack([t1, t2[-2:, :]])  
-            t2 = np.vstack([t1[:2, :], t2])  
-            ns = ns + 2
-        elif self.offset != 0.25:
-            raise ValueError('Invalid offset value')
-
-        sino = np.vstack([t1.flatten(), t2.flatten()]).T.reshape(2*ns, nphi)
-        return sino
-    
-
-    """
+   

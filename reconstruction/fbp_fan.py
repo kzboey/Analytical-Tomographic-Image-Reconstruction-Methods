@@ -59,7 +59,7 @@ class Fbp_fan(XrayOperator):
         ds = self.vol_spacing[0]
         pixel_size = 1 # unit spacing
         offset = self.pp_offset
-        dso = self.s2c
+        dso = self.s2c            # source to isocenter distance
         dsd = self.s2c + self.c2d # source to detector distance
         dod = self.c2d            # object to detector distance
         ia = self.thetas
@@ -68,6 +68,7 @@ class Fbp_fan(XrayOperator):
         orbit = deg2rad(np.max(thetas) - np.min(thetas))
         orbit_start = deg2rad(np.min(thetas))
         betas = deg2rad(ia)
+        images = [] # store intemediate backprojected images
         
         # Step 1: Weight the sinogram
         if weighting == "parker":
@@ -80,8 +81,9 @@ class Fbp_fan(XrayOperator):
             else:
                 weight = self.fan_weight(nb, na, ds, dso, dsd, offset)
          
-        print("weight: ", weight)
+        # print("weight: ", weight)
         wsino = weight * sino
+        sino = wsino
         
         # Step 2: filter the sinogram
         projection_size_padded = max(64, int(2 ** np.ceil(np.log2(2 * nb))))
@@ -106,7 +108,6 @@ class Fbp_fan(XrayOperator):
         xc, yc = xc[mask], yc[mask]
 
         img = np.zeros_like(rr)
-
         ia_values = np.arange(0, na)
         betas = orbit_start + orbit * ia_values / na
 
@@ -123,12 +124,14 @@ class Fbp_fan(XrayOperator):
             il = np.floor(bb).astype(int)
             il = np.clip(il, 0, nb - 2) 
             wr = bb - il # left weight
-            wl = 1 - wr # right weight          
+            wl = 1 - wr # right weight   
+            
             img[mask] += (wl * fsino[il, ia] + wr * fsino[il+1, ia]) * w2
-
+            images.append(np.copy(img))
+            
         img = 0.5 * orbit / na * img
 
-        return img
+        return img, images, wsino
           
     @staticmethod
     def fan_weight(nb, na, ds, dso, dsd, offset):
@@ -142,27 +145,30 @@ class Fbp_fan(XrayOperator):
     
     @staticmethod
     def parker_weight(nb, na, ds, bet, dsd, offset):
+        # Implement equation (3.9.35) from 3.9.3 FBP for short scans
         print("parker weight used")
         nn = np.arange(-(nb - 1) / 2, (nb - 1) / 2 + 1)
         ss = ds * nn
         gam = np.arctan(ss / dsd)
-
+        
         smax = ((nb - 1) / 2 - np.abs(offset)) * ds
-        gam_max = gam / 2
+        fan_angle = np.max(bet)
+        gam_max = fan_angle/4
 
         gg, bb = np.meshgrid(bet, gam)
+
         wt = np.zeros((nb, na))
         
+        # q(x) function used in the chapter
         fun = lambda x: sin(pi / 2 * x) ** 2
-
         for i in range(nb):
             for j in range(na):
-                if bb[i, j] < 2 * (gam_max[i] - gg[i, j]):
-                    wt[i, j] = fun(bb[i, j] / (2 * (gam_max[i] - gg[i, j])))**2
-                elif 2 * (gam_max[i] - gg[i, j]) <= bb[i, j] < np.pi - 2 * gg[i, j]:
+                if bb[i, j] < 2 * (gam_max - gg[i, j]): # Condition 1
+                    wt[i, j] = fun(bb[i, j] / (2 * (gam_max - gg[i, j]))) 
+                elif 2 * (gam_max - gg[i, j]) <= bb[i, j] < np.pi - 2 * gg[i, j]: # Condition 2
                     wt[i, j] = 1
-                elif np.pi - 2 * gg[i, j] < bb[i, j] <= np.pi + 2 * gam_max[i]:
-                    wt[i, j] = fun( (np.pi + 2 * gam_max[i] - bb[i, j]) / (2 * (gam_max[i] + gg[i, j])))**2
+                elif np.pi - 2 * gg[i, j] < bb[i, j] <= np.pi + 2 * gam_max: # Condition 3
+                    wt[i, j] = fun( (np.pi + 2 * gam_max - bb[i, j]) / (2 * (gam_max + gg[i, j]))) 
 
         return wt
 

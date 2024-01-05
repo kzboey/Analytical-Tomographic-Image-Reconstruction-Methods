@@ -104,7 +104,7 @@ class Bpf_fan(XrayOperator):
             img[mask] += (wl * sino[il, ia] + wr * sino[il+1, ia]) * w2
 
         img = 0.5 * orbit / na * img
-        
+        unfiltered_img = img
         # Step 3: filter the backprojected image
 
         img_shape = img.shape[0]
@@ -118,7 +118,7 @@ class Bpf_fan(XrayOperator):
         fimg = fft(fimg , axis=0) * ramp
         img = real(ifft(fimg, axis=0)[:img_shape, :])
 
-        return img
+        return img, unfiltered_img
           
     @staticmethod
     def fan_weight(nb, na, ds, dso, dsd, offset):
@@ -131,29 +131,30 @@ class Bpf_fan(XrayOperator):
 
     @staticmethod
     def parker_weight(nb, na, ds, bet, dsd, offset):
-        nn = np.arange(-(nb - 1) / 2, (nb - 1) / 2 + 1) 
+        # Implement equation (3.9.35) from 3.9.3 FBP for short scans
+        print("parker weight used")
+        nn = np.arange(-(nb - 1) / 2, (nb - 1) / 2 + 1)
         ss = ds * nn
         gam = np.arctan(ss / dsd)
         
         smax = ((nb - 1) / 2 - np.abs(offset)) * ds
-        gam_max = np.arctan(smax / dsd)
-        
-        gg, bb = np.meshgrid(gam, bet)
-        
-        fun = lambda x: sin(pi/2 * x)**2
+        fan_angle = np.max(bet)
+        gam_max = fan_angle/4
+
+        gg, bb = np.meshgrid(bet, gam)
 
         wt = np.zeros((nb, na))
-
-        ii = (bb < 2 * (gam_max - gg)) & (bb >= 0)
-        tmp = bb[ii] / (2 * (gam_max - gg[ii]))
-        wt[ii] = fun(tmp)
-
-        ii = (2 * (gam_max - gg) <= bb) & (bb < pi - 2 * gg)
-        wt[ii] = 1
-
-        ii = (pi - 2 * gg < bb) & (bb <= pi + 2 * gam_max)
-        tmp = (pi + 2 * gam_max - bb[ii]) / (2 * (gam_max + gg[ii]))
-        wt[ii] = fun(tmp)
+        
+        # q(x) function used in the chapter
+        fun = lambda x: sin(pi / 2 * x) ** 2
+        for i in range(nb):
+            for j in range(na):
+                if bb[i, j] < 2 * (gam_max - gg[i, j]): # Condition 1
+                    wt[i, j] = fun(bb[i, j] / (2 * (gam_max - gg[i, j]))) 
+                elif 2 * (gam_max - gg[i, j]) <= bb[i, j] < np.pi - 2 * gg[i, j]: # Condition 2
+                    wt[i, j] = 1
+                elif np.pi - 2 * gg[i, j] < bb[i, j] <= np.pi + 2 * gam_max: # Condition 3
+                    wt[i, j] = fun( (np.pi + 2 * gam_max - bb[i, j]) / (2 * (gam_max + gg[i, j]))) 
 
         return wt
     
